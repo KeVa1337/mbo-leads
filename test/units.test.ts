@@ -86,11 +86,11 @@ test("old posts are not sent", () => {
 test("order card escapes HTML and shows budget, format and source", () => {
   const text = leadText({
     id: 1, source_id: 1, ext_id: "5", url: "https://t.me/ch/5", text: "", posted_at: new Date(), is_order: true, category: "web",
-    title: "Лендінг <для> салону", summary: "Потрібен сайт & запис", budget: "$300", remote: true, duplicate_of: null, handle: "ch",
+    title: "Лендінг <для> салону", summary: "Потрібен сайт & запис", budget: "$300", remote: true, market: "ua", duplicate_of: null, handle: "ch",
   });
   assert.ok(text.includes("<b>Лендінг &lt;для&gt; салону</b>"));
   assert.ok(text.includes("сайт &amp; запис"));
-  assert.ok(text.includes("💰 $300") && text.includes("🌍 віддалено") && text.includes("@ch"));
+  assert.ok(text.includes("💰 $300") && text.includes("💻 віддалено") && text.includes("🇺🇦 Україна") && text.includes("@ch"));
 });
 
 test("cost is counted per model", () => {

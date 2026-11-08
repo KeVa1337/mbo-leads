@@ -51,7 +51,7 @@ export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBud
       for (const [i, post] of batch.entries()) {
         const c = results.get(i);
         if (!c?.is_order) {
-          await store.saveClassification(post.id, { is_order: false, category: null, title: null, summary: null, budget: null, remote: null, duplicate_of: null });
+          await store.saveClassification(post.id, { is_order: false, category: null, title: null, summary: null, budget: null, remote: null, market: null, duplicate_of: null });
           continue;
         }
         const duplicate = findDuplicate(post.text, recent);
@@ -62,9 +62,10 @@ export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBud
           summary: c.summary.slice(0, 400) || null,
           budget: c.budget,
           remote: c.remote,
+          market: c.market,
           duplicate_of: duplicate,
         });
-        if (duplicate === null) {
+        if (duplicate === null && c.market !== "ru_by") {
           recent.unshift({ id: post.id, text: post.text });
           orders++;
         }

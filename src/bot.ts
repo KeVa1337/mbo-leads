@@ -13,7 +13,9 @@ export function leadText(post: PostRow): string {
   if (post.summary) lines.push("", esc(post.summary));
   const meta: string[] = [];
   if (post.budget) meta.push(`💰 ${esc(post.budget)}`);
-  if (post.remote === true) meta.push("🌍 віддалено");
+  if (post.market === "ua") meta.push("🇺🇦 Україна");
+  if (post.market === "intl") meta.push("🌐 закордон");
+  if (post.remote === true) meta.push("💻 віддалено");
   if (post.remote === false) meta.push("📍 на місці");
   if (post.category && isCategory(post.category)) meta.push(CATEGORIES[post.category]);
   if (meta.length) lines.push("", meta.join(" · "));
@@ -152,7 +154,7 @@ export function createBot(config: Config, store: Store) {
     const counts = await store.sourceOrderCounts();
     const lines = sources.map((s) => {
       const c = counts.get(s.id);
-      const stat = c ? `${c.orders} замовл. з ${c.posts} постів за 7 дн.${c.good || c.bad ? `, 👍${c.good} 👎${c.bad}` : ""}` : "ще без постів";
+      const stat = c ? `${c.orders} замовл. з ${c.posts} постів за 7 дн.${c.ru_by ? `, ⛔ РФ/РБ ${c.ru_by}` : ""}${c.good || c.bad ? `, 👍${c.good} 👎${c.bad}` : ""}` : "ще без постів";
       return `${s.error ? "⚠️" : "•"} @${s.handle} — ${stat}${s.error ? `\n   ${s.error}` : ""}`;
     });
     await ctx.reply(lines.join("\n"));
@@ -164,7 +166,7 @@ export function createBot(config: Config, store: Store) {
     await ctx.reply(
       [
         `👥 Користувачів: ${s.users} (активних ${s.active}, Pro ${s.pro})`,
-        `📥 За 24 год: ${s.posts24} постів → ${s.orders24} замовлень, ${s.dup24} дублікатів`,
+        `📥 За 24 год: ${s.posts24} постів → ${s.orders24} замовлень, ${s.dup24} дублікатів, ${s.blocked24} з Росії/Білорусі відсіяно`,
         `📤 Надіслано за 24 год: ${s.sent24}`,
         `💸 Розбір: сьогодні $${spend.today.toFixed(2)}, за місяць $${spend.month.toFixed(2)} з $${config.MONTHLY_BUDGET_USD}`,
       ].join("\n"),

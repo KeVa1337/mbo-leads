@@ -5,6 +5,8 @@ import { CATEGORY_IDS } from "./categories.js";
 
 // Posts go to Claude in batches: one request decides for up to BATCH posts, which keeps the cost per post low.
 export const BATCH = 20;
+export const MARKETS = ["ua", "intl", "ru_by", "unknown"] as const;
+export type Market = (typeof MARKETS)[number];
 const MAX_POST_CHARS = 1500;
 
 const Result = z.object({
@@ -15,6 +17,7 @@ const Result = z.object({
   summary: z.string().describe("the key details in Ukrainian, at most 240 characters; empty when not an order"),
   budget: z.string().nullable().describe("budget as written in the post, e.g. '$300' or '5000 грн'; null if absent"),
   remote: z.boolean().nullable().describe("true if remote work is fine, false if on-site only, null if unclear"),
+  market: z.enum(MARKETS).describe("where the client is: ua, intl, ru_by or unknown"),
 });
 const Output = z.object({ results: z.array(Result) });
 export type Classification = z.infer<typeof Result>;
@@ -40,6 +43,13 @@ Categories:
 - copy: copywriting, translation, content writing;
 - dev: other programming: mobile apps, backend, scripts, games;
 - other: anything else.
+
+Market (where the client is):
+- ua: a client in Ukraine: hryvnias (грн, UAH), Ukrainian cities, Ukrainian services (Нова Пошта, Prom, Rozetka, OLX.ua, monobank, Дія);
+- ru_by: a client in Russia or Belarus: rubles (₽, руб, RUB, BYN), Russian or Belarusian cities, Russian platforms (Kwork, FL.ru, Avito, VK, Дзен, Ozon, Wildberries, Max messenger, Сбер, ЮKassa, Тинькофф, Госуслуги), Russian legal entities (ООО, ИП with Russian context);
+- intl: any other country, or a remote job paid in USD/EUR with no sign of Russia or Belarus;
+- unknown: no clear signal.
+Russian language alone is not a signal: many clients in Ukraine and elsewhere write in Russian. Decide by currency, places, platforms and companies.
 
 Write title and summary in Ukrainian whatever the post's language. The summary keeps what a freelancer needs to decide: the task, scope, deadline, requirements. Never copy phone numbers, emails or usernames into title or summary. Return one result for every post, with its index.`;
 

@@ -24,8 +24,8 @@ const fakeClassifier: Classifier = async (texts) => {
   texts.forEach((t, i) => {
     const m = /^ORDER (\w+): (.*)$/s.exec(t);
     results.set(i, m
-      ? { i, is_order: true, category: m[1]!, title: m[2]!.slice(0, 40), summary: m[2]!, budget: "$100", remote: true }
-      : { i, is_order: false, category: "other", title: "", summary: "", budget: null, remote: null });
+      ? { i, is_order: true, category: m[1]!, title: m[2]!.slice(0, 40), summary: m[2]!, budget: "$100", remote: true, market: t.includes("₽") ? "ru_by" : "ua" }
+      : { i, is_order: false, category: "other", title: "", summary: "", budget: null, remote: null, market: "unknown" });
   });
   return { results, usage: { model: "fake", input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.001 } };
 };
@@ -65,14 +65,15 @@ test("posts go from a channel to the right subscribers once, within limits", { s
     { extId: 5, text: "ORDER web: Інтернет-магазин одягу на WooCommerce, 20 товарів", postedAt: at(10) },
     { extId: 6, text: "ORDER web: Telegram Mini App для доставки їжі з оплатою", postedAt: at(5) },
     { extId: 7, text: "ORDER web: Старе замовлення на сайт візитку для юриста", postedAt: at(60 * 30) },
+    { extId: 8, text: "ORDER web: Нужен лендинг для студии в Москве, оплата 15 000 ₽", postedAt: at(3) },
   ].map((p) => ({ ...p, url: `https://t.me/freelance_test/${p.extId}` }));
-  assert.equal(await store.savePosts(src, posts), 7);
+  assert.equal(await store.savePosts(src, posts), 8);
   // the same page fetched again adds nothing
   assert.equal(await store.savePosts((await store.listSources())[0]!, posts), 0);
 
   const c = await pipeline.classifyPending();
-  assert.equal(c.posts, 7);
-  assert.equal(c.orders, 5, "1 ad and 1 duplicate are not new orders");
+  assert.equal(c.posts, 8);
+  assert.equal(c.orders, 5, "1 ad, 1 duplicate and 1 order from Russia are not new orders");
 
   await pipeline.deliver();
   const byUser = (u: number) => sent.filter((s) => s.user === u).map((s) => Number(s.post.ext_id));
@@ -80,6 +81,7 @@ test("posts go from a channel to the right subscribers once, within limits", { s
   assert.deepEqual(byUser(20), [4]);
   assert.deepEqual(byUser(40), [1, 5, 6], "Pro gets every fresh web order");
   assert.ok(!sent.some((s) => Number(s.post.ext_id) === 7), "a 30-hour-old order is not sent");
+  assert.ok(!sent.some((s) => Number(s.post.ext_id) === 8), "an order from Russia is never sent, even to Pro");
   assert.deepEqual(limits, [10], "the limit note goes out once");
   assert.equal((await store.getUser(blockedUser))?.blocked, true, "a user who blocked the bot is marked");
 
@@ -91,5 +93,6 @@ test("posts go from a channel to the right subscribers once, within limits", { s
   const stats = await store.stats();
   assert.equal(stats.orders24, 5);
   assert.equal(stats.dup24, 1);
+  assert.equal(stats.blocked24, 1);
   assert.ok((await store.spend()).today > 0);
 });

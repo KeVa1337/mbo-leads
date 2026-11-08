@@ -6,7 +6,7 @@ export type SourceRow = { id: number; handle: string; title: string | null; acti
 export type PostRow = {
   id: number; source_id: number; ext_id: string; url: string; text: string; posted_at: Date;
   is_order: boolean | null; category: string | null; title: string | null; summary: string | null;
-  budget: string | null; remote: boolean | null; duplicate_of: number | null; handle?: string;
+  budget: string | null; remote: boolean | null; market?: string | null; duplicate_of: number | null; handle?: string;
 };
 
 export function localDay(tz: string, d = new Date()): string {
@@ -36,9 +36,10 @@ export function createStore(db: Db, tz: string) {
     async markChecked(id: number, error: string | null, title?: string | null): Promise<void> {
       await db.query("UPDATE sources SET checked_at = now(), error = $2, title = COALESCE($3, title) WHERE id = $1", [id, error, title ?? null]);
     },
-    async sourceOrderCounts(): Promise<Map<number, { orders: number; posts: number; good: number; bad: number }>> {
+    async sourceOrderCounts(): Promise<Map<number, { orders: number; ru_by: number; posts: number; good: number; bad: number }>> {
       const { rows } = await db.query(
-        `SELECT p.source_id, count(*)::int AS posts, count(*) FILTER (WHERE p.is_order AND p.duplicate_of IS NULL)::int AS orders,
+        `SELECT p.source_id, count(*)::int AS posts, count(*) FILTER (WHERE p.is_order AND p.duplicate_of IS NULL AND p.market IS DISTINCT FROM 'ru_by')::int AS orders,
+                count(*) FILTER (WHERE p.is_order AND p.market = 'ru_by')::int AS ru_by,
                 count(f.*) FILTER (WHERE f.kind = 'good')::int AS good, count(f.*) FILTER (WHERE f.kind IN ('bad','fake'))::int AS bad
          FROM posts p LEFT JOIN feedback f ON f.post_id = p.id
          WHERE p.fetched_at > now() - interval '7 days' GROUP BY p.source_id`,
@@ -75,10 +76,10 @@ export function createStore(db: Db, tz: string) {
       const { rows } = await db.query("SELECT * FROM posts WHERE classified_at IS NULL ORDER BY id LIMIT $1", [limit]);
       return rows;
     },
-    async saveClassification(id: number, c: { is_order: boolean; category: string | null; title: string | null; summary: string | null; budget: string | null; remote: boolean | null; duplicate_of: number | null }): Promise<void> {
+    async saveClassification(id: number, c: { is_order: boolean; category: string | null; title: string | null; summary: string | null; budget: string | null; remote: boolean | null; market: string | null; duplicate_of: number | null }): Promise<void> {
       await db.query(
-        `UPDATE posts SET classified_at = now(), is_order = $2, category = $3, title = $4, summary = $5, budget = $6, remote = $7, duplicate_of = $8 WHERE id = $1`,
-        [id, c.is_order, c.category, c.title, c.summary, c.budget, c.remote, c.duplicate_of],
+        `UPDATE posts SET classified_at = now(), is_order = $2, category = $3, title = $4, summary = $5, budget = $6, remote = $7, duplicate_of = $8, market = $9 WHERE id = $1`,
+        [id, c.is_order, c.category, c.title, c.summary, c.budget, c.remote, c.duplicate_of, c.market],
       );
     },
     async recentOrders(days = 7, limit = 1000): Promise<{ id: number; text: string }[]> {
@@ -91,7 +92,9 @@ export function createStore(db: Db, tz: string) {
     async undeliveredOrders(): Promise<PostRow[]> {
       const { rows } = await db.query(
         `SELECT p.*, s.handle FROM posts p JOIN sources s ON s.id = p.source_id
-         WHERE p.is_order AND p.duplicate_of IS NULL AND p.delivered_at IS NULL ORDER BY p.posted_at`,
+         WHERE p.is_order AND p.duplicate_of IS NULL AND p.delivered_at IS NULL
+           AND p.market IS DISTINCT FROM 'ru_by'   -- orders from Russia and Belarus are never sent
+         ORDER BY p.posted_at`,
       );
       return rows;
     },
@@ -169,13 +172,14 @@ export function createStore(db: Db, tz: string) {
       );
       return rows[0];
     },
-    async stats(): Promise<{ users: number; active: number; pro: number; posts24: number; orders24: number; dup24: number; sent24: number }> {
+    async stats(): Promise<{ users: number; active: number; pro: number; posts24: number; orders24: number; dup24: number; blocked24: number; sent24: number }> {
       const { rows } = await db.query(
         `SELECT (SELECT count(*) FROM users)::int AS users,
                 (SELECT count(*) FROM users WHERE NOT blocked AND NOT paused AND cardinality(categories) > 0)::int AS active,
                 (SELECT count(*) FROM users WHERE plan = 'pro' AND (pro_until IS NULL OR pro_until > now()))::int AS pro,
                 (SELECT count(*) FROM posts WHERE fetched_at > now() - interval '24 hours')::int AS posts24,
-                (SELECT count(*) FROM posts WHERE is_order AND duplicate_of IS NULL AND fetched_at > now() - interval '24 hours')::int AS orders24,
+                (SELECT count(*) FROM posts WHERE is_order AND duplicate_of IS NULL AND market IS DISTINCT FROM 'ru_by' AND fetched_at > now() - interval '24 hours')::int AS orders24,
+                (SELECT count(*) FROM posts WHERE is_order AND market = 'ru_by' AND fetched_at > now() - interval '24 hours')::int AS blocked24,
                 (SELECT count(*) FROM posts WHERE duplicate_of IS NOT NULL AND fetched_at > now() - interval '24 hours')::int AS dup24,
                 (SELECT count(*) FROM deliveries WHERE sent_at > now() - interval '24 hours')::int AS sent24`,
       );
