@@ -4,7 +4,9 @@ import type { Config } from "./config.js";
 import { isPro } from "./delivery.js";
 import type { Outbox } from "./pipeline.js";
 import type { PostRow, Store } from "./store.js";
-import { fetchChannel, normalizeHandle, SourceError } from "./telegram-source.js";
+import { obviouslyNotOrder } from "./rss-source.js";
+import { fetchSource, resolveSource, sourceLabel } from "./sources.js";
+import { SourceError } from "./telegram-source.js";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -19,7 +21,7 @@ export function leadText(post: PostRow): string {
   if (post.remote === false) meta.push("📍 на місці");
   if (post.category && isCategory(post.category)) meta.push(CATEGORIES[post.category]);
   if (meta.length) lines.push("", meta.join(" · "));
-  lines.push("", `Джерело: @${esc(post.handle ?? "")}`);
+  lines.push("", `Джерело: ${esc(sourceLabel({ kind: post.kind, handle: post.handle, title: post.source_title }))}`);
   return lines.join("\n");
 }
 
@@ -127,24 +129,25 @@ export function createBot(config: Config, store: Store) {
   // ---- admin
   bot.command("addsource", async (ctx) => {
     if (!isAdmin(ctx)) return;
-    const handle = normalizeHandle(ctx.match ?? "");
-    if (!handle) return void (await ctx.reply("Формат: /addsource @назва_каналу або посилання t.me/назва"));
+    const ref = resolveSource(ctx.match ?? "");
+    if (!ref) return void (await ctx.reply("Формат: /addsource @канал, t.me/канал або посилання на RSS-стрічку"));
     try {
-      const page = await fetchChannel(handle);
-      const source = await store.addSource(handle, page.title);
+      const page = await fetchSource(ref);
+      const source = await store.addSource(ref, page.title);
       // the backlog is stored so it is never sent; only posts after this moment reach subscribers
-      await store.savePosts(source, page.posts);
-      await ctx.reply(`✅ Додано @${handle}${page.title ? ` (${page.title})` : ""}. Постів на сторінці: ${page.posts.length}. Нові замовлення звідти підуть підписникам.`);
+      await store.savePosts(source, page.posts, { backlog: true, skip: obviouslyNotOrder });
+      await store.markChecked(source.id, null, page.title);
+      await ctx.reply(`✅ Додано ${sourceLabel({ ...ref, title: page.title })}. Постів зараз: ${page.posts.length}. Нові замовлення звідти підуть підписникам.`);
     } catch (err) {
-      await ctx.reply(`Не вдалося додати @${handle}: ${err instanceof SourceError ? err.message : String(err)}`);
+      await ctx.reply(`Не вдалося додати ${ref.kind === "rss" ? ref.url : `@${ref.handle}`}: ${err instanceof SourceError ? err.message : String(err)}`);
     }
   });
 
   bot.command("delsource", async (ctx) => {
     if (!isAdmin(ctx)) return;
-    const handle = normalizeHandle(ctx.match ?? "");
-    if (!handle) return void (await ctx.reply("Формат: /delsource @назва_каналу"));
-    await ctx.reply((await store.removeSource(handle)) ? `Канал @${handle} вимкнено.` : `Каналу @${handle} немає серед активних.`);
+    const ref = resolveSource(ctx.match ?? "");
+    if (!ref) return void (await ctx.reply("Формат: /delsource @канал або посилання на стрічку"));
+    await ctx.reply((await store.removeSource(ref.handle)) ? `Джерело ${ref.handle} вимкнено.` : `Джерела ${ref.handle} немає серед активних.`);
   });
 
   bot.command("sources", async (ctx) => {
@@ -155,7 +158,7 @@ export function createBot(config: Config, store: Store) {
     const lines = sources.map((s) => {
       const c = counts.get(s.id);
       const stat = c ? `${c.orders} замовл. з ${c.posts} постів за 7 дн.${c.ru_by ? `, ⛔ РФ/РБ ${c.ru_by}` : ""}${c.good || c.bad ? `, 👍${c.good} 👎${c.bad}` : ""}` : "ще без постів";
-      return `${s.error ? "⚠️" : "•"} @${s.handle} — ${stat}${s.error ? `\n   ${s.error}` : ""}`;
+      return `${s.error ? "⚠️" : "•"} ${sourceLabel(s)}${s.kind === "rss" ? ` (${s.handle})` : ""} — ${stat}${s.error ? `\n   ${s.error}` : ""}`;
     });
     await ctx.reply(lines.join("\n"));
   });

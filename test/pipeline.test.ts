@@ -48,7 +48,7 @@ test("posts go from a channel to the right subscribers once, within limits", { s
   };
   const pipeline = createPipeline({ store, classify: fakeClassifier, out, tz: "Europe/Kyiv", freeLimit: 2, monthlyBudget: 30 });
 
-  const src = await store.addSource("freelance_test", "Test");
+  const src = await store.addSource({ kind: "telegram", handle: "freelance_test", url: null }, "Test");
   for (const [id, cats] of [[10, ["web"]], [20, ["design"]], [blockedUser, ["web"]], [40, ["web"]]] as const) {
     await store.upsertUser(id, null, null);
     for (const c of cats) await store.toggleCategory(id, c);
@@ -95,4 +95,31 @@ test("posts go from a channel to the right subscribers once, within limits", { s
   assert.equal(stats.dup24, 1);
   assert.equal(stats.blocked24, 1);
   assert.ok((await store.spend()).today > 0);
+});
+
+test("a feed is read by item id, its backlog is never sent, and [For Hire] ads skip the model", { skip: !url }, async () => {
+  const store = createStore(db, "Europe/Kyiv");
+  const sent: number[] = [];
+  const out: Outbox = { async lead(u, post) { if (u === 50) sent.push(post.id); return true; }, async limitReached() {}, async admin() {} };
+  let modelCalls = 0;
+  const counting: Classifier = async (texts) => { modelCalls += texts.length; return fakeClassifier(texts); };
+  const pipeline = createPipeline({ store, classify: counting, out, tz: "Europe/Kyiv", freeLimit: 100, monthlyBudget: 30 });
+  await store.upsertUser(50, null, null);
+  await store.toggleCategory(50, "design");
+
+  const feed = await store.addSource({ kind: "rss", handle: "example.com/feed", url: "https://example.com/feed" }, "Example");
+  const now = Date.now();
+  const item = (id: number, text: string) => ({ extId: id, url: `https://example.com/p/${id}`, text, postedAt: new Date(now - 60_000) });
+  // first read: everything is backlog
+  assert.equal(await store.savePosts(feed, [item(900, "ORDER design: Логотип для пекарні")], { backlog: true }), 1);
+  // later read: the same item again plus two new ones, in any id order
+  const fresh = [item(900, "ORDER design: Логотип для пекарні"), item(5, "ORDER design: Банери для Instagram магазину взуття"), item(7, "[For Hire] I design logos")];
+  assert.equal(await store.savePosts(feed, fresh, { skip: (t) => t.startsWith("[For Hire]") }), 2);
+
+  await pipeline.classifyPending();
+  assert.equal(modelCalls, 2, "the backlog item and the new order go to the model, the ad does not");
+  await pipeline.deliver();
+  const got = await Promise.all(sent.map((id) => store.getPost(id)));
+  assert.deepEqual(got.map((p) => p?.text), ["ORDER design: Банери для Instagram магазину взуття"]);
+  assert.equal(got[0]?.source_title, "Example");
 });

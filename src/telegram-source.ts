@@ -34,7 +34,12 @@ export function parseChannelPage(html: string, handle: string): ChannelPage {
   return { title, posts };
 }
 
-export class SourceError extends Error {}
+export class SourceError extends Error {
+  /** true for short-lived refusals (rate limits): skip this round quietly instead of reporting the source as broken */
+  constructor(message: string, readonly transient = false) {
+    super(message);
+  }
+}
 
 export async function fetchChannel(handle: string, timeoutMs = 15_000): Promise<ChannelPage> {
   const res = await fetch(`https://t.me/s/${handle}`, {

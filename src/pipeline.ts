@@ -2,7 +2,9 @@ import { BATCH, type Classifier } from "./classify.js";
 import { findDuplicate } from "./dedupe.js";
 import { decide, fresh } from "./delivery.js";
 import { localDay, type PostRow, type Store } from "./store.js";
-import { fetchChannel, SourceError } from "./telegram-source.js";
+import { obviouslyNotOrder } from "./rss-source.js";
+import { fetchSource, sourceLabel } from "./sources.js";
+import { SourceError } from "./telegram-source.js";
 
 export type Outbox = {
   /** Sends an order card; resolves false when the user has blocked the bot */
@@ -20,13 +22,18 @@ export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBud
     let saved = 0;
     for (const source of await store.listSources()) {
       try {
-        const page = await fetchChannel(source.handle);
-        saved += await store.savePosts(source, page.posts);
-        if (source.error) await out.admin(`✅ Канал @${source.handle} знову читається.`);
+        const page = await fetchSource(source);
+        // the first read of a source only records what is already there
+        saved += await store.savePosts(source, page.posts, { backlog: source.checked_at === null, skip: obviouslyNotOrder });
+        if (source.error) await out.admin(`✅ Джерело ${sourceLabel(source)} знову читається.`);
         await store.markChecked(source.id, null, page.title);
       } catch (err) {
+        if (err instanceof SourceError && err.transient) {
+          console.warn(`${sourceLabel(source)}: ${err.message}, next round`);
+          continue;
+        }
         const reason = err instanceof SourceError ? err.message : err instanceof Error ? err.message : String(err);
-        if (source.error !== reason) await out.admin(`⚠️ Не вдається прочитати @${source.handle}: ${reason}`);
+        if (source.error !== reason) await out.admin(`⚠️ Не вдається прочитати ${sourceLabel(source)}: ${reason}`);
         await store.markChecked(source.id, reason);
       }
       await pause(1500); // be gentle with t.me

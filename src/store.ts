@@ -2,11 +2,11 @@ import type { Db } from "./db.js";
 import type { Subscriber } from "./delivery.js";
 import type { Usage } from "./classify.js";
 
-export type SourceRow = { id: number; handle: string; title: string | null; active: boolean; last_ext_id: string; checked_at: Date | null; error: string | null };
+export type SourceRow = { id: number; kind: string; handle: string; url: string | null; title: string | null; active: boolean; last_ext_id: string; checked_at: Date | null; error: string | null };
 export type PostRow = {
   id: number; source_id: number; ext_id: string; url: string; text: string; posted_at: Date;
   is_order: boolean | null; category: string | null; title: string | null; summary: string | null;
-  budget: string | null; remote: boolean | null; market?: string | null; duplicate_of: number | null; handle?: string;
+  budget: string | null; remote: boolean | null; market?: string | null; duplicate_of: number | null; handle?: string; kind?: string; source_title?: string | null;
 };
 
 export function localDay(tz: string, d = new Date()): string {
@@ -16,12 +16,12 @@ export function localDay(tz: string, d = new Date()): string {
 export function createStore(db: Db, tz: string) {
   return {
     // ---- sources
-    async addSource(handle: string, title: string | null = null): Promise<SourceRow> {
+    async addSource(ref: { kind: string; handle: string; url: string | null }, title: string | null = null): Promise<SourceRow> {
       const { rows } = await db.query(
-        `INSERT INTO sources (handle, title) VALUES ($1, $2)
-         ON CONFLICT (handle) DO UPDATE SET active = true, title = COALESCE(EXCLUDED.title, sources.title)
+        `INSERT INTO sources (kind, handle, url, title) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (handle) DO UPDATE SET active = true, url = EXCLUDED.url, title = COALESCE(EXCLUDED.title, sources.title)
          RETURNING *`,
-        [handle, title],
+        [ref.kind, ref.handle, ref.url, title],
       );
       return rows[0];
     },
@@ -48,21 +48,31 @@ export function createStore(db: Db, tz: string) {
     },
 
     // ---- posts
-    /** Stores posts newer than the source's last one; returns how many were new */
-    async savePosts(source: SourceRow, posts: { extId: number; url: string; text: string; postedAt: Date }[]): Promise<number> {
+    /**
+     * Stores posts the source has not given before; returns how many were new.
+     * Telegram ids grow, so older ones are skipped by number; feed items are matched by their id.
+     * backlog: what a source already had when it was added is kept for stats but never sent.
+     * skip: posts known not to be orders are stored as sorted, without a model call.
+     */
+    async savePosts(source: SourceRow, posts: { extId: number; url: string; text: string; postedAt: Date }[], opts: { backlog?: boolean; skip?: (text: string) => boolean } = {}): Promise<number> {
       const last = Number(source.last_ext_id);
-      const fresh = posts.filter((p) => p.extId > last);
+      const fresh = source.kind === "rss" ? posts : posts.filter((p) => p.extId > last);
       if (fresh.length === 0) return 0;
+      let added = 0;
       const client = await db.connect();
       try {
         await client.query("BEGIN");
         for (const p of fresh) {
-          await client.query(
-            "INSERT INTO posts (source_id, ext_id, url, text, posted_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
-            [source.id, p.extId, p.url, p.text, p.postedAt],
+          const skipped = opts.skip?.(p.text) ?? false;
+          const { rowCount } = await client.query(
+            `INSERT INTO posts (source_id, ext_id, url, text, posted_at, delivered_at, classified_at, is_order)
+             VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN now() END, CASE WHEN $7 THEN now() END, CASE WHEN $7 THEN false END)
+             ON CONFLICT DO NOTHING`,
+            [source.id, p.extId, p.url, p.text, p.postedAt, opts.backlog ?? false, skipped],
           );
+          added += rowCount ?? 0;
         }
-        await client.query("UPDATE sources SET last_ext_id = $2 WHERE id = $1", [source.id, Math.max(...fresh.map((p) => p.extId))]);
+        if (source.kind !== "rss") await client.query("UPDATE sources SET last_ext_id = $2 WHERE id = $1", [source.id, Math.max(...fresh.map((p) => p.extId))]);
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -70,7 +80,7 @@ export function createStore(db: Db, tz: string) {
       } finally {
         client.release();
       }
-      return fresh.length;
+      return added;
     },
     async unclassified(limit: number): Promise<PostRow[]> {
       const { rows } = await db.query("SELECT * FROM posts WHERE classified_at IS NULL ORDER BY id LIMIT $1", [limit]);
@@ -91,7 +101,7 @@ export function createStore(db: Db, tz: string) {
     },
     async undeliveredOrders(): Promise<PostRow[]> {
       const { rows } = await db.query(
-        `SELECT p.*, s.handle FROM posts p JOIN sources s ON s.id = p.source_id
+        `SELECT p.*, s.handle, s.kind, s.title AS source_title FROM posts p JOIN sources s ON s.id = p.source_id
          WHERE p.is_order AND p.duplicate_of IS NULL AND p.delivered_at IS NULL
            AND p.market IS DISTINCT FROM 'ru_by'   -- orders from Russia and Belarus are never sent
          ORDER BY p.posted_at`,
@@ -102,7 +112,7 @@ export function createStore(db: Db, tz: string) {
       await db.query("UPDATE posts SET delivered_at = now() WHERE id = $1", [id]);
     },
     async getPost(id: number): Promise<PostRow | null> {
-      const { rows } = await db.query("SELECT p.*, s.handle FROM posts p JOIN sources s ON s.id = p.source_id WHERE p.id = $1", [id]);
+      const { rows } = await db.query("SELECT p.*, s.handle, s.kind, s.title AS source_title FROM posts p JOIN sources s ON s.id = p.source_id WHERE p.id = $1", [id]);
       return rows[0] ?? null;
     },
 

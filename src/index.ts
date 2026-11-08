@@ -6,7 +6,7 @@ import { loadConfig } from "./config.js";
 import { createDb, migrate } from "./db.js";
 import { createPipeline } from "./pipeline.js";
 import { createStore } from "./store.js";
-import { normalizeHandle } from "./telegram-source.js";
+import { resolveSource } from "./sources.js";
 
 async function main() {
   const config = loadConfig();
@@ -16,8 +16,8 @@ async function main() {
 
   if ((await store.listSources(false)).length === 0) {
     for (const raw of config.INITIAL_CHANNELS.split(",")) {
-      const handle = normalizeHandle(raw);
-      if (handle) await store.addSource(handle);
+      const ref = resolveSource(raw);
+      if (ref) await store.addSource(ref);
     }
   }
 

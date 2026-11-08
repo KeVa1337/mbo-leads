@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS posts (
   delivered_at  TIMESTAMPTZ,                     -- fan-out finished for this order
   UNIQUE (source_id, ext_id)
 );
-ALTER TABLE posts ADD COLUMN IF NOT EXISTS market TEXT;   -- ua | intl | ru_by | unknown
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS market TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS url TEXT;     -- feed address; null for Telegram channels   -- ua | intl | ru_by | unknown
 CREATE INDEX IF NOT EXISTS posts_pending ON posts (id) WHERE classified_at IS NULL;
 CREATE INDEX IF NOT EXISTS posts_orders ON posts (posted_at) WHERE is_order;
 

@@ -14,7 +14,7 @@ const Env = z.object({
   FETCH_INTERVAL_SEC: z.coerce.number().int().min(60).default(180),
   // Скільки замовлень на день отримує безкоштовний користувач
   FREE_DAILY_LIMIT: z.coerce.number().int().min(0).default(5),
-  // Публічні канали (@назва або t.me/назва) через кому, які додаються при першому запуску
+  // Джерела через кому, що додаються при першому запуску: @канал, t.me/канал або посилання на RSS-стрічку
   INITIAL_CHANNELS: z.string().default(""),
   TIMEZONE: z.string().default("Europe/Kyiv"),
   PORT: z.coerce.number().int().default(3000),

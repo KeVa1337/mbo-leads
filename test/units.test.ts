@@ -6,6 +6,8 @@ import { decide, fresh, isPro, type Subscriber } from "../src/delivery.js";
 import { leadText } from "../src/bot.js";
 import { normalizeHandle, parseChannelPage } from "../src/telegram-source.js";
 import { costOf } from "../src/classify.js";
+import { obviouslyNotOrder, parseFeed } from "../src/rss-source.js";
+import { resolveSource, sourceLabel } from "../src/sources.js";
 
 test("channel handles are normalized from any common form", () => {
   assert.equal(normalizeHandle("@Freelance_UA"), "freelance_ua");
@@ -97,4 +99,37 @@ test("cost is counted per model", () => {
   const u = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
   assert.equal(costOf("claude-opus-5-5", u), 24);
   assert.equal(costOf("claude-haiku-5-5", u), 0.6);
+});
+
+test("Freelancehunt RSS becomes posts with title, text, category and link", () => {
+  const page = parseFeed(readFileSync(new URL("./fixtures/freelancehunt.xml", import.meta.url), "utf8"));
+  assert.ok(page.posts.length >= 20);
+  for (const p of page.posts) {
+    assert.ok(p.url.startsWith("https://freelancehunt.com/"));
+    assert.ok(p.text.length > 10 && !p.text.includes("<"));
+    assert.ok(!Number.isNaN(p.postedAt.getTime()));
+  }
+  assert.equal(new Set(page.posts.map((p) => p.extId)).size, page.posts.length, "item ids are unique");
+  assert.ok(page.posts.some((p) => p.text.includes("Категорія:")));
+});
+
+test("Reddit Atom feed becomes posts without the 'submitted by' footer", () => {
+  const page = parseFeed(readFileSync(new URL("./fixtures/reddit.xml", import.meta.url), "utf8"));
+  assert.ok(page.posts.length >= 10);
+  for (const p of page.posts) {
+    assert.ok(p.url.startsWith("https://www.reddit.com/r/forhire/"));
+    assert.ok(!/submitted by/i.test(p.text));
+  }
+  assert.ok(page.posts.some((p) => p.text.startsWith("[Hiring]")));
+  assert.ok(page.posts.filter((p) => obviouslyNotOrder(p.text)).every((p) => /^\[for hire\]/i.test(p.text)));
+});
+
+test("sources are recognised from channel names and feed links", () => {
+  assert.deepEqual(resolveSource("@freelancetaverna"), { kind: "telegram", handle: "freelancetaverna", url: null });
+  assert.deepEqual(resolveSource("https://t.me/freelancetaverna"), { kind: "telegram", handle: "freelancetaverna", url: null });
+  assert.deepEqual(resolveSource("https://freelancehunt.com/projects.rss"), { kind: "rss", handle: "freelancehunt.com/projects.rss", url: "https://freelancehunt.com/projects.rss" });
+  assert.equal(resolveSource("https://www.reddit.com/r/forhire/new/.rss")?.handle, "reddit.com/r/forhire/new/.rss");
+  assert.equal(resolveSource("not a source"), null);
+  assert.equal(sourceLabel({ kind: "rss", handle: "x.com/feed", title: "Freelancehunt" }), "Freelancehunt");
+  assert.equal(sourceLabel({ kind: "telegram", handle: "ch" }), "@ch");
 });
