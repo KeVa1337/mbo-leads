@@ -20,6 +20,10 @@ const Env = z.object({
   PORT: z.coerce.number().int().default(3000),
   MONTHLY_BUDGET_USD: z.coerce.number().positive().default(30),
   SUPPORT_CONTACT: optional,
+  // Threads: довгостроковий токен користувача з дозволами threads_basic і threads_keyword_search. Без нього Threads вимкнений
+  THREADS_ACCESS_TOKEN: optional,
+  // Як часто (хв) шукати в Threads: кожен запит — окреме звернення до API з добовим лімітом
+  THREADS_INTERVAL_MIN: z.coerce.number().int().min(5).default(15),
 });
 
 export type Config = z.infer<typeof Env>;

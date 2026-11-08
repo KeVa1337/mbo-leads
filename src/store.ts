@@ -56,7 +56,7 @@ export function createStore(db: Db, tz: string) {
      */
     async savePosts(source: SourceRow, posts: { extId: number; url: string; text: string; postedAt: Date }[], opts: { backlog?: boolean; skip?: (text: string) => boolean } = {}): Promise<number> {
       const last = Number(source.last_ext_id);
-      const fresh = source.kind === "rss" ? posts : posts.filter((p) => p.extId > last);
+      const fresh = source.kind === "telegram" ? posts.filter((p) => p.extId > last) : posts;
       if (fresh.length === 0) return 0;
       let added = 0;
       const client = await db.connect();
@@ -72,7 +72,7 @@ export function createStore(db: Db, tz: string) {
           );
           added += rowCount ?? 0;
         }
-        if (source.kind !== "rss") await client.query("UPDATE sources SET last_ext_id = $2 WHERE id = $1", [source.id, Math.max(...fresh.map((p) => p.extId))]);
+        if (source.kind === "telegram") await client.query("UPDATE sources SET last_ext_id = $2 WHERE id = $1", [source.id, Math.max(...fresh.map((p) => p.extId))]);
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -164,6 +164,15 @@ export function createStore(db: Db, tz: string) {
         "INSERT INTO feedback (user_id, post_id, kind) VALUES ($1, $2, $3) ON CONFLICT (user_id, post_id) DO UPDATE SET kind = EXCLUDED.kind, created_at = now()",
         [userId, postId, kind],
       );
+    },
+
+    // ---- small state
+    async getKv(key: string): Promise<string | null> {
+      const { rows } = await db.query("SELECT value FROM kv WHERE key = $1", [key]);
+      return rows[0]?.value ?? null;
+    },
+    async setKv(key: string, value: string): Promise<void> {
+      await db.query("INSERT INTO kv (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [key, value]);
     },
 
     // ---- money and stats

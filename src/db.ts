@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS feedback (
   PRIMARY KEY (user_id, post_id)
 );
 
+-- Small state: the refreshed Threads token and when it was refreshed
+CREATE TABLE IF NOT EXISTS kv (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS api_usage (
   id          BIGSERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),

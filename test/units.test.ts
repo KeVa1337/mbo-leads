@@ -8,6 +8,7 @@ import { normalizeHandle, parseChannelPage } from "../src/telegram-source.js";
 import { costOf } from "../src/classify.js";
 import { obviouslyNotOrder, parseFeed } from "../src/rss-source.js";
 import { feedName, resolveSource, sourceLabel } from "../src/sources.js";
+import { threadsPosts } from "../src/threads-source.js";
 
 test("channel handles are normalized from any common form", () => {
   assert.equal(normalizeHandle("@Freelance_UA"), "freelance_ua");
@@ -138,4 +139,17 @@ test("feeds get readable names", () => {
   assert.equal(feedName("https://www.reddit.com/r/forhire+slavelabour/new/.rss", "newest submissions : multi"), "Reddit (r/forhire, r/slavelabour)");
   assert.equal(feedName("https://freelancehunt.com/projects.rss", "Открытые фриланс-проекты"), "Freelancehunt");
   assert.equal(feedName("https://example.com/jobs.rss", "Example Jobs"), "Example Jobs");
+});
+
+test("Threads queries are sources and API posts become posts", () => {
+  assert.deepEqual(resolveSource("threads:  Шукаю   РОЗРОБНИКА "), { kind: "threads", handle: "threads:шукаю розробника", url: null });
+  assert.equal(resolveSource("threads: ab"), null);
+  assert.equal(sourceLabel({ kind: "threads", handle: "threads:need a website" }), "Threads «need a website»");
+  const posts = threadsPosts([
+    { id: "18045678901234567", text: "Шукаю розробника лендінгу", permalink: "https://www.threads.net/@anna/post/abc", timestamp: "2026-11-08T18:00:00+0000", username: "anna" },
+    { id: "18045678901234568", permalink: "https://www.threads.net/@b/post/x", timestamp: "2026-11-08T18:00:00+0000" },
+  ]);
+  assert.equal(posts.length, 1, "posts without text are skipped");
+  assert.equal(posts[0]!.url, "https://www.threads.net/@anna/post/abc");
+  assert.ok(Number.isSafeInteger(posts[0]!.extId));
 });

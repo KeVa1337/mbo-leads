@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { BATCH, type Classifier } from "./classify.js";
 import { findDuplicate } from "./dedupe.js";
 import { decide, fresh } from "./delivery.js";
@@ -5,6 +6,7 @@ import { localDay, type PostRow, type Store } from "./store.js";
 import { obviouslyNotOrder } from "./rss-source.js";
 import { feedName, fetchSource, sourceLabel } from "./sources.js";
 import { SourceError } from "./telegram-source.js";
+import { refreshThreadsToken as refreshToken } from "./threads-source.js";
 
 export type Outbox = {
   /** Sends an order card; resolves false when the user has blocked the bot */
@@ -13,16 +15,53 @@ export type Outbox = {
   admin(text: string): Promise<void>;
 };
 
-type Opts = { store: Store; classify: Classifier; out: Outbox; tz: string; freeLimit: number; monthlyBudget: number };
+type Opts = {
+  store: Store; classify: Classifier; out: Outbox; tz: string; freeLimit: number; monthlyBudget: number;
+  threads?: { envToken?: string | null; intervalMin: number };
+};
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBudget }: Opts) {
+export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBudget, threads }: Opts) {
+  /** The Threads token in use: the last refreshed one, else the one from the environment */
+  async function threadsToken(): Promise<string | null> {
+    const env = threads?.envToken ?? null;
+    // a new token put into the environment replaces the refreshed copy kept in the database
+    const envMark = env ? createHash("sha256").update(env).digest("hex").slice(0, 16) : "";
+    if ((await store.getKv("threads_env")) !== envMark) {
+      await store.setKv("threads_env", envMark);
+      await store.setKv("threads_token", env ?? "");
+      await store.setKv("threads_refreshed_at", String(Date.now()));
+    }
+    return (await store.getKv("threads_token")) || null;
+  }
+
+  /** Long-lived Threads tokens expire after 60 days unless refreshed; refresh once a week */
+  async function refreshThreadsToken(): Promise<void> {
+    const token = await threadsToken();
+    if (!token) return;
+    const last = Number(await store.getKv("threads_refreshed_at"));
+    if (last && Date.now() - last < WEEK_MS) return;
+    try {
+      const fresh = await refreshToken(token);
+      await store.setKv("threads_token", fresh.token);
+      await store.setKv("threads_refreshed_at", String(Date.now()));
+    } catch (err) {
+      await store.setKv("threads_refreshed_at", String(Date.now() - WEEK_MS + 86_400_000)); // try again tomorrow
+      await out.admin(`⚠️ Не вдалося оновити токен Threads: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   async function fetchAll(): Promise<number> {
     let saved = 0;
+    const token = await threadsToken();
     for (const source of await store.listSources()) {
+      // each Threads query is one call against a daily API limit, so it is searched less often
+      if (source.kind === "threads" && source.checked_at && Date.now() - source.checked_at.getTime() < (threads?.intervalMin ?? 15) * 60_000) continue;
       try {
-        const page = await fetchSource(source);
+        const page = await fetchSource(source, { threadsToken: token });
         // the first read of a source only records what is already there
         saved += await store.savePosts(source, page.posts, { backlog: source.checked_at === null, skip: obviouslyNotOrder });
         if (source.error) await out.admin(`✅ Джерело ${sourceLabel(source)} знову читається.`);
@@ -123,7 +162,9 @@ export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBud
     fetchAll,
     classifyPending,
     deliver,
+    refreshThreadsToken,
     async run(): Promise<void> {
+      await refreshThreadsToken();
       const saved = await fetchAll();
       const c = await classifyPending();
       const sent = await deliver();

@@ -23,7 +23,9 @@ async function main() {
 
   const { bot, outbox } = createBot(config, store);
   const classify = createClassifier({ apiKey: config.ANTHROPIC_API_KEY, model: config.LEADS_MODEL, effort: config.LEADS_EFFORT });
-  const pipeline = createPipeline({ store, classify, out: outbox, tz: config.TIMEZONE, freeLimit: config.FREE_DAILY_LIMIT, monthlyBudget: config.MONTHLY_BUDGET_USD });
+  const pipeline = createPipeline({ store, classify, out: outbox, tz: config.TIMEZONE, freeLimit: config.FREE_DAILY_LIMIT, monthlyBudget: config.MONTHLY_BUDGET_USD,
+    threads: { envToken: config.THREADS_ACCESS_TOKEN, intervalMin: config.THREADS_INTERVAL_MIN },
+  });
 
   // Coolify/Docker health check: unhealthy when the loop has not finished a round for a long time
   let lastRound = Date.now();

@@ -19,6 +19,7 @@ Telegram-бот, що ловить нові замовлення для фрил
 - **Freelancehunt** (Україна): `https://freelancehunt.com/projects.rss`, близько 20–30 проєктів на добу.
 - **Reddit** (закордон): кілька сабреддитів одним запитом, щоб Reddit не обмежував частоту:
   `https://www.reddit.com/r/forhire+slavelabour+DesignJobs+HireaWriter/new/.rss`. Пости `[For Hire]` і `[Offer]` відкидаються ще до AI.
+- **Threads:** пошукові запити, кожен окремим джерелом: `/addsource threads: шукаю розробника`. Працює через офіційний API Meta і потрібен `THREADS_ACCESS_TOKEN` з дозволами `threads_basic` і `threads_keyword_search`. Поки Meta не схвалить застосунок для `threads_keyword_search` (App Review), пошук повертає лише пости власника токена. Запити виконуються раз на `THREADS_INTERVAL_MIN` хвилин (за замовчуванням 15), а токен бот сам оновлює раз на тиждень.
 - **Публічні Telegram-канали:** `@назва`. Групи-чати без окремого акаунта не читаються.
 
 Тимчасові обмеження сайтів (429) бот пропускає до наступного кола без сповіщень.

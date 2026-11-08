@@ -46,6 +46,8 @@ function categoryKeyboard(selected: string[]): InlineKeyboard {
 const isBlockedError = (err: unknown) => err instanceof GrammyError && (err.error_code === 403 || /chat not found/i.test(err.description));
 
 export function createBot(config: Config, store: Store) {
+  // the pipeline keeps the current (refreshed) Threads token in the database
+  const threadsToken = async () => (await store.getKv("threads_token")) || config.THREADS_ACCESS_TOKEN || null;
   const bot = new Bot(config.TELEGRAM_BOT_TOKEN);
   const isAdmin = (ctx: Context) => ctx.from?.id === config.ADMIN_TELEGRAM_ID;
 
@@ -130,9 +132,9 @@ export function createBot(config: Config, store: Store) {
   bot.command("addsource", async (ctx) => {
     if (!isAdmin(ctx)) return;
     const ref = resolveSource(ctx.match ?? "");
-    if (!ref) return void (await ctx.reply("Формат: /addsource @канал, t.me/канал або посилання на RSS-стрічку"));
+    if (!ref) return void (await ctx.reply("Формат: /addsource @канал, t.me/канал, посилання на RSS-стрічку або threads: пошуковий запит"));
     try {
-      const page = await fetchSource(ref);
+      const page = await fetchSource(ref, { threadsToken: await threadsToken() });
       if (ref.url) page.title = feedName(ref.url, page.title);
       const source = await store.addSource(ref, page.title);
       // the backlog is stored so it is never sent; only posts after this moment reach subscribers
@@ -140,7 +142,7 @@ export function createBot(config: Config, store: Store) {
       await store.markChecked(source.id, null, page.title);
       await ctx.reply(`✅ Додано ${sourceLabel({ ...ref, title: page.title })}. Постів зараз: ${page.posts.length}. Нові замовлення звідти підуть підписникам.`);
     } catch (err) {
-      await ctx.reply(`Не вдалося додати ${ref.kind === "rss" ? ref.url : `@${ref.handle}`}: ${err instanceof SourceError ? err.message : String(err)}`);
+      await ctx.reply(`Не вдалося додати ${ref.kind === "rss" ? ref.url : ref.kind === "threads" ? ref.handle : `@${ref.handle}`}: ${err instanceof SourceError ? err.message : String(err)}`);
     }
   });
 
