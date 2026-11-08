@@ -25,7 +25,9 @@ function apiError(status: number, body: ApiError): SourceError {
   const code = body.error?.code;
   if (code === 190) return new SourceError("токен Threads недійсний або прострочений, потрібен новий (THREADS_ACCESS_TOKEN)");
   if (code === 4 || code === 17 || code === 32 || code === 613 || status === 429) return new SourceError("Threads тимчасово обмежив запити", true);
-  if (code === 10 || code === 200) return new SourceError("немає дозволу threads_keyword_search: застосунок ще не схвалений у Meta");
+  // Meta's own wording is kept: the same codes cover a missing scope in the token and an unapproved app
+  const meta = `(${code}${body.error?.error_subcode ? `/${body.error.error_subcode}` : ""}: ${body.error?.message ?? "без пояснення"})`;
+  if (code === 10 || code === 200) return new SourceError(`немає дозволу threads_keyword_search ${meta}`);
   return new SourceError(`Threads API відповів ${status}: ${body.error?.message ?? "невідома помилка"}`);
 }
 
