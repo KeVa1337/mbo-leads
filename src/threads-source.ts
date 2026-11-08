@@ -53,3 +53,26 @@ export async function refreshThreadsToken(token: string): Promise<{ token: strin
   if (!res.ok || !body.access_token) throw apiError(res.status, body);
   return { token: body.access_token, expiresInSec: body.expires_in ?? 0 };
 }
+
+/** Admin diagnostics: what the token can see, without saving anything */
+export async function threadsProbe(query: string, token: string): Promise<string[]> {
+  const call = async (path: string, params: Record<string, string>) => {
+    const url = new URL(`${API}/${path}`);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000), headers: { authorization: `Bearer ${token}` } });
+    const body = (await res.json().catch(() => ({}))) as ApiError & { data?: ThreadsPost[]; username?: string };
+    if (!res.ok || body.error) return { error: `${body.error?.code ?? res.status}: ${body.error?.message ?? "помилка"}`, body };
+    return { body };
+  };
+  const short = (t?: string) => (t ?? "").replace(/\s+/g, " ").slice(0, 60);
+  const lines: string[] = [];
+  const me = await call("me", { fields: "id,username" });
+  lines.push(me.error ? `Акаунт: ❌ ${me.error}` : `Акаунт: @${me.body.username}`);
+  const own = await call("me/threads", { fields: "id,text,timestamp", limit: "3" });
+  lines.push(own.error ? `Власні пости: ❌ ${own.error}` : `Власні пости: ${own.body.data?.length ?? 0}${own.body.data?.[0] ? ` (останній: «${short(own.body.data[0].text)}»)` : ""}`);
+  for (const type of ["RECENT", "TOP"]) {
+    const r = await call("keyword_search", { q: query, search_type: type, fields: "id,text,permalink,timestamp", limit: "10" });
+    lines.push(r.error ? `Пошук ${type}: ❌ ${r.error}` : `Пошук ${type}: ${r.body.data?.length ?? 0}${r.body.data?.[0] ? ` (перший: «${short(r.body.data[0].text)}»)` : ""}`);
+  }
+  return lines;
+}

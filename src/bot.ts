@@ -7,6 +7,7 @@ import type { PostRow, Store } from "./store.js";
 import { obviouslyNotOrder } from "./rss-source.js";
 import { feedName, fetchSource, resolveSource, sourceLabel } from "./sources.js";
 import { SourceError } from "./telegram-source.js";
+import { threadsProbe } from "./threads-source.js";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -159,6 +160,19 @@ export function createBot(config: Config, store: Store) {
       await ctx.reply(`✅ Додано ${sourceLabel({ ...ref, title: page.title })}. Постів зараз: ${page.posts.length}. Нові замовлення звідти підуть підписникам.`);
     } catch (err) {
       await ctx.reply(`Не вдалося додати ${ref.kind === "rss" ? ref.url : ref.kind === "threads" ? ref.handle : `@${ref.handle}`}: ${err instanceof SourceError ? err.message : String(err)}`);
+    }
+  });
+
+  // /threadstest <query>: what the Threads token sees right now, nothing is saved
+  bot.command("threadstest", async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const token = await threadsToken();
+    if (!token) return void (await ctx.reply("THREADS_ACCESS_TOKEN не задано"));
+    const query = ctx.match.trim() || "шукаю розробника";
+    try {
+      await ctx.reply([`Threads, запит «${query}»:`, ...(await threadsProbe(query, token))].join("\n"));
+    } catch (err) {
+      await ctx.reply(`Не вдалося перевірити Threads: ${err instanceof Error ? err.message : String(err)}`);
     }
   });
 
