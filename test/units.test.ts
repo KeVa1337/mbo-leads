@@ -7,7 +7,7 @@ import { leadText } from "../src/bot.js";
 import { normalizeHandle, parseChannelPage } from "../src/telegram-source.js";
 import { costOf } from "../src/classify.js";
 import { obviouslyNotOrder, parseFeed } from "../src/rss-source.js";
-import { resolveSource, sourceLabel } from "../src/sources.js";
+import { feedName, resolveSource, sourceLabel } from "../src/sources.js";
 
 test("channel handles are normalized from any common form", () => {
   assert.equal(normalizeHandle("@Freelance_UA"), "freelance_ua");
@@ -132,4 +132,10 @@ test("sources are recognised from channel names and feed links", () => {
   assert.equal(resolveSource("not a source"), null);
   assert.equal(sourceLabel({ kind: "rss", handle: "x.com/feed", title: "Freelancehunt" }), "Freelancehunt");
   assert.equal(sourceLabel({ kind: "telegram", handle: "ch" }), "@ch");
+});
+
+test("feeds get readable names", () => {
+  assert.equal(feedName("https://www.reddit.com/r/forhire+slavelabour/new/.rss", "newest submissions : multi"), "Reddit (r/forhire, r/slavelabour)");
+  assert.equal(feedName("https://freelancehunt.com/projects.rss", "Открытые фриланс-проекты"), "Freelancehunt");
+  assert.equal(feedName("https://example.com/jobs.rss", "Example Jobs"), "Example Jobs");
 });

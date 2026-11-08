@@ -3,7 +3,7 @@ import { findDuplicate } from "./dedupe.js";
 import { decide, fresh } from "./delivery.js";
 import { localDay, type PostRow, type Store } from "./store.js";
 import { obviouslyNotOrder } from "./rss-source.js";
-import { fetchSource, sourceLabel } from "./sources.js";
+import { feedName, fetchSource, sourceLabel } from "./sources.js";
 import { SourceError } from "./telegram-source.js";
 
 export type Outbox = {
@@ -26,7 +26,7 @@ export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBud
         // the first read of a source only records what is already there
         saved += await store.savePosts(source, page.posts, { backlog: source.checked_at === null, skip: obviouslyNotOrder });
         if (source.error) await out.admin(`✅ Джерело ${sourceLabel(source)} знову читається.`);
-        await store.markChecked(source.id, null, page.title);
+        await store.markChecked(source.id, null, source.url ? feedName(source.url, page.title) : page.title);
       } catch (err) {
         if (err instanceof SourceError && err.transient) {
           console.warn(`${sourceLabel(source)}: ${err.message}, next round`);

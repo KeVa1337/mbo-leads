@@ -26,6 +26,22 @@ export function fetchSource(src: { kind: string; handle: string; url: string | n
   return src.kind === "rss" && src.url ? fetchFeed(src.url) : fetchChannel(src.handle);
 }
 
+/** A readable name for a feed: sites often title them "newest submissions : multi" or in another language */
+export function feedName(url: string, feedTitle: string | null): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host.endsWith("reddit.com")) {
+      const subs = /\/r\/([^/]+)/.exec(u.pathname)?.[1]?.split("+") ?? [];
+      return subs.length ? `Reddit (${subs.map((s) => `r/${s}`).join(", ")})` : "Reddit";
+    }
+    if (host === "freelancehunt.com") return "Freelancehunt";
+  } catch {
+    // fall back to the feed's own title
+  }
+  return feedTitle;
+}
+
 /** How a source is named to people: "@channel" or the feed's title */
 export function sourceLabel(src: { kind?: string | null; handle?: string | null; title?: string | null }): string {
   if (src.kind === "rss") return src.title || src.handle || "стрічка";

@@ -5,7 +5,7 @@ import { isPro } from "./delivery.js";
 import type { Outbox } from "./pipeline.js";
 import type { PostRow, Store } from "./store.js";
 import { obviouslyNotOrder } from "./rss-source.js";
-import { fetchSource, resolveSource, sourceLabel } from "./sources.js";
+import { feedName, fetchSource, resolveSource, sourceLabel } from "./sources.js";
 import { SourceError } from "./telegram-source.js";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -133,6 +133,7 @@ export function createBot(config: Config, store: Store) {
     if (!ref) return void (await ctx.reply("Формат: /addsource @канал, t.me/канал або посилання на RSS-стрічку"));
     try {
       const page = await fetchSource(ref);
+      if (ref.url) page.title = feedName(ref.url, page.title);
       const source = await store.addSource(ref, page.title);
       // the backlog is stored so it is never sent; only posts after this moment reach subscribers
       await store.savePosts(source, page.posts, { backlog: true, skip: obviouslyNotOrder });
