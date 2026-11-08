@@ -146,7 +146,7 @@ test("Threads queries are sources and API posts become posts", () => {
   assert.equal(resolveSource("threads: ab"), null);
   assert.equal(sourceLabel({ kind: "threads", handle: "threads:need a website" }), "Threads «need a website»");
   const posts = threadsPosts([
-    { id: "18045678901234567", text: "Шукаю розробника лендінгу", permalink: "https://www.threads.net/@anna/post/abc", timestamp: "2026-11-08T18:00:00+0000", username: "anna" },
+    { id: "18045678901234567", text: "Шукаю розробника лендінгу", permalink: "https://www.threads.net/@anna/post/abc", timestamp: "2026-11-08T18:00:00+0000" },
     { id: "18045678901234568", permalink: "https://www.threads.net/@b/post/x", timestamp: "2026-11-08T18:00:00+0000" },
   ]);
   assert.equal(posts.length, 1, "posts without text are skipped");

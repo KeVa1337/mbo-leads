@@ -123,3 +123,15 @@ test("a feed is read by item id, its backlog is never sent, and [For Hire] ads s
   assert.deepEqual(got.map((p) => p?.text), ["ORDER design: Банери для Instagram магазину взуття"]);
   assert.equal(got[0]?.source_title, "Example");
 });
+
+test("old posts are purged and a user can delete their data", { skip: !url }, async () => {
+  const store = createStore(db, "Europe/Kyiv");
+  const src = (await store.listSources()).find((s) => s.handle === "freelance_test")!;
+  await db.query("UPDATE posts SET fetched_at = now() - interval '31 days' WHERE source_id = $1 AND ext_id = 1", [src.id]);
+  assert.equal(await store.purgePosts(30), 1);
+  assert.equal(await store.deletePostByUrl("https://t.me/freelance_test/2"), 1);
+  assert.ok(await store.deleteUser(10));
+  assert.equal(await store.getUser(10), null);
+  const { rows } = await db.query("SELECT count(*)::int AS n FROM deliveries WHERE user_id = 10");
+  assert.equal(rows[0].n, 0, "deliveries go with the user");
+});

@@ -67,6 +67,7 @@ async function main() {
     { command: "pause", description: "Призупинити розсилку" },
     { command: "resume", description: "Увімкнути розсилку" },
     { command: "help", description: "Допомога" },
+    { command: "deleteme", description: "Видалити мої дані" },
   ]);
   await startPolling(bot, () => outbox.admin("🟢 Бот замовлень запущений"));
 }

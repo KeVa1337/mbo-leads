@@ -21,6 +21,8 @@ type Opts = {
 };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+/** Collected posts are kept this long (stated in the privacy policy) */
+export const RETENTION_DAYS = 30;
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -164,6 +166,12 @@ export function createPipeline({ store, classify, out, tz, freeLimit, monthlyBud
     deliver,
     refreshThreadsToken,
     async run(): Promise<void> {
+      const day = localDay(tz);
+      if ((await store.getKv("purge_day")) !== day) {
+        await store.setKv("purge_day", day);
+        const gone = await store.purgePosts(RETENTION_DAYS);
+        if (gone) console.log(`retention: ${gone} posts older than ${RETENTION_DAYS} days deleted`);
+      }
       await refreshThreadsToken();
       const saved = await fetchAll();
       const c = await classifyPending();

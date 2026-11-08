@@ -101,8 +101,24 @@ export function createBot(config: Config, store: Store) {
   });
 
   bot.command("help", (ctx) =>
-    ctx.reply("/categories — що надсилати\n/pause — призупинити розсилку\n/resume — увімкнути знову\n/plan — ваш тариф і ліміт"),
+    ctx.reply(
+      "/categories — що надсилати\n/pause — призупинити розсилку\n/resume — увімкнути знову\n/plan — ваш тариф і ліміт\n/deleteme — видалити всі мої дані\n\nПолітика конфіденційності: https://mbo-solutions.com/leads/privacy.html",
+      { link_preview_options: { is_disabled: true } },
+    ),
   );
+
+  bot.command("deleteme", (ctx) =>
+    ctx.reply("Видалити всі ваші дані: категорії, тариф, історію надісланих замовлень і оцінки? Це не можна скасувати.", {
+      reply_markup: new InlineKeyboard().text("Так, видалити", "del:yes").text("Скасувати", "del:no"),
+    }),
+  );
+
+  bot.callbackQuery(/^del:(yes|no)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (ctx.match[1] === "no") return void (await ctx.editMessageText("Скасовано, нічого не видалено."));
+    await store.deleteUser(ctx.from.id);
+    await ctx.editMessageText("Ваші дані видалено. Якщо захочете повернутися, натисніть /start.");
+  });
 
   bot.callbackQuery(/^cat:(.+)$/, async (ctx) => {
     const id = ctx.match[1]!;
@@ -177,6 +193,15 @@ export function createBot(config: Config, store: Store) {
         `💸 Розбір: сьогодні $${spend.today.toFixed(2)}, за місяць $${spend.month.toFixed(2)} з $${config.MONTHLY_BUDGET_USD}`,
       ].join("\n"),
     );
+  });
+
+  // /delpost <link> — an author asked to remove their post (privacy policy, section 6)
+  bot.command("delpost", async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const link = (ctx.match ?? "").trim();
+    if (!/^https?:\/\//.test(link)) return void (await ctx.reply("Формат: /delpost <посилання на пост>"));
+    const n = await store.deletePostByUrl(link);
+    await ctx.reply(n ? `Видалено: ${n}.` : "Такого поста в базі немає (можливо, вже видалений через 30 днів).");
   });
 
   // /pro <telegram id> <days> — grant Pro by hand until payments exist; 0 days takes it away

@@ -138,6 +138,21 @@ export function createStore(db: Db, tz: string) {
       );
       return rows[0]?.categories ?? [];
     },
+    /** Removes a user with their settings, delivery history and ratings */
+    async deleteUser(tgId: number): Promise<boolean> {
+      const { rowCount } = await db.query("DELETE FROM users WHERE tg_id = $1", [tgId]);
+      return (rowCount ?? 0) > 0;
+    },
+    /** Posts older than the retention period go, with their deliveries and ratings */
+    async purgePosts(days: number): Promise<number> {
+      const { rowCount } = await db.query("DELETE FROM posts WHERE fetched_at < now() - make_interval(days => $1)", [days]);
+      return rowCount ?? 0;
+    },
+    /** An author asked to remove their post */
+    async deletePostByUrl(url: string): Promise<number> {
+      const { rowCount } = await db.query("DELETE FROM posts WHERE url = $1 OR url = $2", [url, url.replace(/\/$/, "")]);
+      return rowCount ?? 0;
+    },
     async setPaused(tgId: number, paused: boolean): Promise<void> {
       await db.query("UPDATE users SET paused = $2 WHERE tg_id = $1", [tgId, paused]);
     },

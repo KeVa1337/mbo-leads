@@ -8,7 +8,7 @@ import { SourceError } from "./telegram-source.js";
 
 const API = "https://graph.threads.net/v1.0";
 
-export type ThreadsPost = { id: string; text?: string; permalink?: string; timestamp?: string; username?: string };
+export type ThreadsPost = { id: string; text?: string; permalink?: string; timestamp?: string };
 
 export function threadsPosts(data: ThreadsPost[]): ChannelPost[] {
   return data.flatMap((p) => {
@@ -33,7 +33,7 @@ export async function searchThreads(query: string, token: string, timeoutMs = 20
   const url = new URL(`${API}/keyword_search`);
   url.searchParams.set("q", query);
   url.searchParams.set("search_type", "RECENT");
-  url.searchParams.set("fields", "id,text,permalink,timestamp,username");
+  url.searchParams.set("fields", "id,text,permalink,timestamp"); // no author data: see the privacy policy
   url.searchParams.set("limit", "50");
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { authorization: `Bearer ${token}` } });
   const body = (await res.json().catch(() => ({}))) as ApiError & { data?: ThreadsPost[] };
